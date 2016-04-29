@@ -157,7 +157,7 @@ friend class GNeuralNet;
 protected:
 	GMatrix m_weights; // Each row is an upstream neuron. Each column is a downstream neuron.
 	GMatrix m_delta; // Used to implement momentum
-	GMatrix m_bias; // Row 0 is the bias. Row 1 is the net. Row 2 is the activation. Row 3 is the error. Row 4 is the biasDelta. Row 5 is the slack.
+	GMatrix m_vecs; // Row 0 is the net. Row 1 is the activation. Row 2 is the error. Row 3 is the slack.
 	GActivationFunction* m_pActivationFunction;
 
 public:
@@ -179,7 +179,7 @@ using GNeuralNetLayer::updateDeltas;
 	virtual GDomNode* serialize(GDom* pDoc);
 
 	/// Returns the number of values expected to be fed as input into this layer.
-	virtual size_t inputs() { return m_weights.rows(); }
+	virtual size_t inputs() { return m_weights.rows() - 1; }
 
 	/// Returns the number of nodes or units in this layer.
 	virtual size_t outputs() { return m_weights.cols(); }
@@ -189,10 +189,10 @@ using GNeuralNetLayer::updateDeltas;
 	virtual void resize(size_t inputs, size_t outputs, GRand* pRand = NULL, double deviation = 0.03);
 
 	/// Returns the activation values from the most recent call to feedForward().
-	virtual GVec& activation() { return m_bias[2]; }
+	virtual GVec& activation() { return m_vecs[1]; }
 
 	/// Returns a buffer used to store error terms for each unit in this layer.
-	virtual GVec& error() { return m_bias[3]; }
+	virtual GVec& error() { return m_vecs[2]; }
 
 	/// Feeds a the inputs through this layer.
 	virtual void feedForward(const GVec& in);
@@ -267,20 +267,20 @@ using GNeuralNetLayer::updateDeltas;
 	GMatrix& deltas() { return m_delta; }
 
 	/// Returns the bias vector of this layer.
-	GVec& bias() { return m_bias[0]; }
+	GVec& bias() { return m_weights[m_weights.rows() - 1]; }
 
 	/// Returns the bias vector of this layer.
-	const GVec& bias() const { return m_bias[0]; }
+	const GVec& bias() const { return m_weights[m_weights.rows() - 1]; }
 
 	/// Returns the net vector (that is, the values computed before the activation function was applied)
 	/// from the most recent call to feedForward().
-	GVec& net() { return m_bias[1]; }
+	GVec& net() { return m_vecs[0]; }
 
 	/// Returns a buffer used to store delta values for each bias in this layer.
-	GVec& biasDelta() { return m_bias[4]; }
+	GVec& biasDelta() { return m_delta[0]; }
 
 	/// Returns a vector used to specify slack terms for each unit in this layer.
-	GVec& slack() { return m_bias[5]; }
+	GVec& slack() { return m_vecs[3]; }
 
 	/// Returns a pointer to the activation function used in this layer
 	GActivationFunction* activationFunction() { return m_pActivationFunction; }

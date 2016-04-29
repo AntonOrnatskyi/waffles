@@ -101,13 +101,11 @@ GLayerClassic::GLayerClassic(size_t inps, size_t outs, GActivationFunction* pAct
 }
 
 GLayerClassic::GLayerClassic(GDomNode* pNode)
-: m_weights(pNode->field("weights")), m_delta(m_weights.rows(), m_weights.cols()), m_bias(6, m_weights.cols())
+: m_weights(pNode->field("weights")), m_delta(m_weights.rows(), m_weights.cols()), m_vecs(4, m_weights.cols())
 {
-	bias().deserialize(pNode->field("bias"));
 	slack().deserialize(pNode->field("slack"));
 	m_pActivationFunction = GActivationFunction::deserialize(pNode->field("act_func"));
 	m_delta.setAll(0.0);
-	biasDelta().fill(0.0);
 }
 
 GLayerClassic::~GLayerClassic()
@@ -119,7 +117,6 @@ GDomNode* GLayerClassic::serialize(GDom* pDoc)
 {
 	GDomNode* pNode = baseDomNode(pDoc);
 	pNode->addField(pDoc, "weights", m_weights.serialize(pDoc));
-	pNode->addField(pDoc, "bias", bias().serialize(pDoc));
 	pNode->addField(pDoc, "slack", slack().serialize(pDoc));
 	pNode->addField(pDoc, "act_func", m_pActivationFunction->serialize(pDoc));
 	return pNode;
@@ -135,8 +132,8 @@ void GLayerClassic::resize(size_t inputCount, size_t outputCount, GRand* pRand, 
 	size_t fewerOutputs = std::min(oldOutputs, outputCount);
 
 	// Weights
-	m_weights.resizePreserve(inputCount, outputCount);
-	m_delta.resizePreserve(inputCount, outputCount);
+	m_weights.resizePreserve(inputCount + 1, outputCount);
+	m_delta.resizePreserve(inputCount + 1, outputCount);
 	m_delta.setAll(0.0);
 	double dev = deviation;
 	if(pRand)
@@ -154,7 +151,7 @@ void GLayerClassic::resize(size_t inputCount, size_t outputCount, GRand* pRand, 
 			if(inputCount * outputCount - fewerInputs * fewerOutputs > fewerInputs * fewerOutputs)
 				dev *= fewerInputs * fewerOutputs / (inputCount * outputCount - fewerInputs * fewerOutputs);
 		}
-		for(size_t i = 0; i < fewerInputs; i++)
+		for(size_t i = 0; i < fewerInputs + 1; i++)
 		{
 			GVec& row = m_weights[i];
 			for(size_t j = fewerOutputs; j < outputCount; j++)
@@ -168,15 +165,7 @@ void GLayerClassic::resize(size_t inputCount, size_t outputCount, GRand* pRand, 
 		}
 	}
 
-	// Bias
-	m_bias.resizePreserve(6, outputCount);
-	biasDelta().fill(0.0);
-	if(pRand)
-	{
-		GVec& b = bias();
-		for(size_t j = fewerOutputs; j < outputCount; j++)
-			b[j] = dev * pRand->normal();
-	}
+	m_vecs.resizePreserve(4, outputCount);
 
 	// Slack
 	GVec& s = slack();
@@ -200,10 +189,6 @@ void GLayerClassic::resetWeights(GRand& rand)
 			w[j] = rand.normal() * mag;
 	}
 	m_delta.setAll(0.0);
-	GVec& b = bias();
-	for(size_t i = 0; i < outputCount; i++)
-		b[i] = rand.normal() * mag;
-	biasDelta().fill(0.0);
 }
 
 // virtual
