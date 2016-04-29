@@ -233,7 +233,7 @@ void GLayerClassic::feedForwardToOneOutput(const GVec& in, size_t output)
 	GVec& n = net();
 	size_t pos = 0;
 	n[output] = 0.0;
-	for(size_t i = 0; i < m_weights.rows(); i++)
+	for(size_t i = 0; i < inputs(); i++)
 		n[output] += (in[pos++] * m_weights[i][output]);
 	n[output] += bias()[output];
 
@@ -300,7 +300,7 @@ void GLayerClassic::backPropError(GNeuralNetLayer* pUpStreamLayer)
 {
 	GVec& upStreamError = pUpStreamLayer->error();
 	size_t inputCount = pUpStreamLayer->outputs();
-	GAssert(inputCount <= m_weights.rows());
+	GAssert(inputCount <= inputs());
 	const GVec& source = error();
 	for(size_t i = 0; i < inputCount; i++)
 		upStreamError[i] = source.dotProduct(m_weights[i]);
@@ -310,7 +310,7 @@ void GLayerClassic::backPropErrorSingleOutput(size_t outputNode, GVec& upStreamE
 {
 	GAssert(outputNode < outputs());
 	double in = error()[outputNode];
-	for(size_t i = 0; i < m_weights.rows(); i++)
+	for(size_t i = 0; i < inputs(); i++)
 		upStreamError[i] = in * m_weights[i][outputNode];
 }
 
@@ -341,17 +341,14 @@ void GLayerClassic::updateDeltas(const GVec& upStreamActivation, double momentum
 void GLayerClassic::copySingleNeuronWeights(size_t source, size_t dest)
 {
 	for(size_t up = 0; up < m_weights.rows(); up++)
-	{
 		m_weights[up][dest] = m_weights[up][source];
-	}
-	bias()[dest] = bias()[source];
 }
 
 void GLayerClassic::updateWeightsSingleNeuron(size_t outputNode, const GVec& upStreamActivation, double learningRate, double momentum)
 {
 	// Adjust the weights
 	double err = error()[outputNode];
-	for(size_t up = 0; up < m_weights.rows(); up++)
+	for(size_t up = 0; up < inputs(); up++)
 	{
 		double* pD = &m_delta[up][outputNode];
 		double* pW = &m_weights[up][outputNode];
@@ -383,11 +380,11 @@ void GLayerClassic::applyDeltas(double learningRate)
 void GLayerClassic::applyAdaptive()
 {
 	// Lazily make a place to store adaptive learning rates
-	while(m_delta.rows() <= m_weights.rows() + m_weights.rows()) // all the weights + the bias vector
+	while(m_delta.rows() <= m_weights.rows())
 		m_delta.newRow().fill(0.01);
 
 	// Adapt the learning rates
-	size_t inputCount = inputs();
+	size_t inputCount = m_weights.rows();
 	size_t outputCount = outputs();
 	for(size_t i = 0; i < inputCount; i++)
 	{
@@ -409,34 +406,16 @@ void GLayerClassic::applyAdaptive()
 			}
 		}
 	}
-	GVec& delta = biasDelta();
-	GVec& rates = m_delta[m_weights.rows() + m_weights.rows()];
-	for(size_t j = 0; j < outputCount; j++)
-	{
-		if(std::signbit(delta[j]) == std::signbit(rates[j]))
-		{
-			if(std::abs(rates[j]) < 1e3)
-				rates[j] *= 1.2;
-		}
-		else
-		{
-			if(std::abs(rates[j]) > 1e-8)
-				rates[j] *= -0.2;
-			else
-				rates[j] *= -1.1;
-		}
-	}
 
 	// Update the weights and bias
 	for(size_t i = 0; i < inputCount; i++)
 		m_weights[i] += m_delta[m_weights.rows() + i];
-	bias() += m_delta[m_weights.rows() + m_weights.rows()];
 	m_pActivationFunction->applyAdaptive();
 }
 
 void GLayerClassic::scaleWeights(double factor, bool scaleBiases)
 {
-	for(size_t i = 0; i < m_weights.rows(); i++)
+	for(size_t i = 0; i < inputs(); i++)
 		m_weights[i] *= factor;
 	if(scaleBiases)
 		bias() *= factor;
@@ -444,7 +423,7 @@ void GLayerClassic::scaleWeights(double factor, bool scaleBiases)
 
 void GLayerClassic::diminishWeights(double amount, bool regularizeBiases)
 {
-	for(size_t i = 0; i < m_weights.rows(); i++)
+	for(size_t i = 0; i < inputs(); i++)
 		m_weights[i].regularize_L1(amount);
 	if(regularizeBiases)
 		bias().regularize_L1(amount);
@@ -459,7 +438,7 @@ void GLayerClassic::contractWeights(double factor, bool contractBiases)
 	for(size_t i = 0; i < outputCount; i++)
 	{
 		double f = 1.0 - factor * m_pActivationFunction->derivativeOfNet(n[i], a[i], i);
-		for(size_t j = 0; j < m_weights.rows(); j++)
+		for(size_t j = 0; j < inputs(); j++)
 			m_weights[j][i] *= f;
 		if(contractBiases)
 			b[i] *= f;
@@ -475,9 +454,6 @@ void GLayerClassic::regularizeWeights(double factor, double power)
 		for(size_t j = 0; j < outputCount; j++)
 			w[j] -= GBits::sign(w[j]) * factor * pow(std::abs(w[j]), power);
 	}
-	GVec& w = bias();
-	for(size_t j = 0; j < outputCount; j++)
-		w[j] -= GBits::sign(w[j]) * factor * pow(std::abs(w[j]), power);
 }
 
 void GLayerClassic::transformWeights(GMatrix& transform, const GVec& offset)
@@ -492,7 +468,7 @@ void GLayerClassic::transformWeights(GMatrix& transform, const GVec& offset)
 	m_weights.copyBlock(*pNewWeights, 0, 0, pNewWeights->rows(), outputCount, 0, 0, false);
 	GVec& n = net();
 	n.fill(0.0);
-	for(size_t i = 0; i < m_weights.rows(); i++)
+	for(size_t i = 0; i < inputs(); i++)
 		n.addScaled(offset[i], m_weights.row(i));
 	bias() += n;
 }
@@ -520,7 +496,7 @@ void GLayerClassic::maxNorm(double min, double max)
 	for(size_t i = 0; i < outputCount; i++)
 	{
 		double squaredMag = 0;
-		for(size_t j = 0; j < m_weights.rows(); j++)
+		for(size_t j = 0; j < inputs(); j++)
 		{
 			double d = m_weights[j][i];
 			squaredMag += (d * d);
@@ -528,19 +504,19 @@ void GLayerClassic::maxNorm(double min, double max)
 		if(squaredMag > max * max)
 		{
 			double scal = max / sqrt(squaredMag);
-			for(size_t j = 0; j < m_weights.rows(); j++)
+			for(size_t j = 0; j < inputs(); j++)
 				m_weights[j][i] *= scal;
 		}
 		else if(squaredMag < min * min)
 		{
 			if(squaredMag == 0.0)
 			{
-				for(size_t j = 0; j < m_weights.rows(); j++)
+				for(size_t j = 0; j < inputs(); j++)
 					m_weights[j][i] = 1.0;
-				squaredMag = (double)m_weights.rows();
+				squaredMag = (double)inputs();
 			}
 			double scal = min / sqrt(squaredMag);
-			for(size_t j = 0; j < m_weights.rows(); j++)
+			for(size_t j = 0; j < inputs(); j++)
 				m_weights[j][i] *= scal;
 		}
 	}
@@ -595,7 +571,6 @@ void GLayerClassic::perturbWeights(GRand& rand, double deviation, size_t start, 
 	size_t n = std::min(outputs() - start, count);
 	for(size_t j = 0; j < m_weights.rows(); j++)
 		GVec::perturb(m_weights[j].data() + start, deviation, n, rand);
-	GVec::perturb(bias().data() + start, deviation, n, rand);
 }
 
 // virtual
@@ -615,7 +590,7 @@ void GLayerClassic::renormalizeInput(size_t input, double oldMin, double oldMax,
 
 void GLayerClassic::printSummary(ostream& stream)
 {
-	size_t inps = m_weights.rows();
+	size_t inps = inputs();
 	size_t outs = m_weights.cols();
 	stream << " ( " << to_str(inps) << " -> " << to_str(outs) << " )\n";
 	stream << "    Bias Mag: " << std::sqrt(bias().squaredMagnitude()) << "\n";
